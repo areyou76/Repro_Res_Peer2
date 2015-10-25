@@ -1,0 +1,210 @@
+---
+title: "Peer2 Assessment - Reproducible Research"
+author: "areyou76"
+date: "October 25, 2015"
+output: html_document
+---
+
+
+##The Impact of Severe Weather Events on Public Health and Economy in the United States from 1950 - 2011
+
+
+#Synopsis
+
+Below are the analizing of the impact of the different weather events on public health and economy based on the storm database collected from the U.S. National Oceanic and Atmospheric Administration's (NOAA) from year 1950 to 2011. The data used will be estimates of fatalities, injuries, property and crop damage to decide which types of event are most harmful to the population health and economy. From these data, we found that high temperatures and tornado are most harmful with respect to population health, while flood, drought, and hurricane/typhoon have the greatest economic impacts. Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+#Setting configuration
+
+```{r }
+
+echo = TRUE  # Allow code to always be displayed
+options(scipen = 1)  # Turn off scientific notation.
+library(ggplot2)
+library(plyr)
+require(gridExtra)
+```
+
+## Processing the storm data
+
+If the data already exists in the working environment, the data will not load again. The script will then read the csv file.
+
+
+```{r }
+
+if (!"stormData" %in% ls()) {
+  stormData <- read.csv("repdata-data-StormData.csv", sep = ",")
+}
+dim(stormData)
+
+```
+
+
+
+```{r}
+head(stormData, n = 2)
+```
+
+
+There are 902297 rows and 37 columns in total. The events in the database start in the year 1950 and end in November 2011. 
+
+
+```{r}
+if (dim(stormData)[2] == 37) {
+  stormData$year <- as.numeric(format(as.Date(stormData$BGN_DATE, format = "%m/%d/%Y %H:%M:%S"), "%Y"))
+}
+hist(stormData$year, breaks = 30)
+```
+
+
+```{r}
+storm <- stormData[stormData$year >= 1995, ]
+dim(storm)
+```
+
+There are 681500 rows and 38 columns in total.
+
+#Impact on Public Health
+
+The girst 15 most severe types of weather events (fatalities and injuries that are caused by the severe weather events)
+
+
+```{r}
+sortHelper <- function(fieldName, top = 15, dataset = stormData) {
+  index <- which(colnames(dataset) == fieldName)
+  field <- aggregate(dataset[, index], by = list(dataset$EVTYPE), FUN = "sum")
+  names(field) <- c("EVTYPE", fieldName)
+  field <- arrange(field, field[, 2], decreasing = T)
+  field <- head(field, n = top)
+  field <- within(field, EVTYPE <- factor(x = EVTYPE, levels = field$EVTYPE))
+  return(field)
+}
+
+
+
+fatalities <- sortHelper("FATALITIES", dataset = storm)
+injuries <- sortHelper("INJURIES", dataset = storm)
+
+```
+
+
+#Economy Impact
+
+Convert the property damage and crop damage data into comparable numerical forms using the definition of the units that describing in the codebook (codebookstorm). Both PROPDMGEXP and CROPDMGEXP columns record a multiplier for each observation where Hundred (H), Thousand (K), Million (M) and Billion (B).
+
+
+```{r}
+convertHelper <- function(dataset = storm, fieldName, newFieldName) {
+  totalLen <- dim(dataset)[2]
+  index <- which(colnames(dataset) == fieldName)
+  dataset[, index] <- as.character(dataset[, index])
+  logic <- !is.na(toupper(dataset[, index]))
+  dataset[logic & toupper(dataset[, index]) == "B", index] <- "9"
+  dataset[logic & toupper(dataset[, index]) == "M", index] <- "6"
+  dataset[logic & toupper(dataset[, index]) == "K", index] <- "3"
+  dataset[logic & toupper(dataset[, index]) == "H", index] <- "2"
+  dataset[logic & toupper(dataset[, index]) == "", index] <- "0"
+  dataset[, index] <- as.numeric(dataset[, index])
+  dataset[is.na(dataset[, index]), index] <- 0
+  dataset <- cbind(dataset, dataset[, index - 1] * 10^dataset[, index])
+  names(dataset)[totalLen + 1] <- newFieldName
+  return(dataset)
+}
+
+
+storm <- convertHelper(storm, "PROPDMGEXP", "propertyDamage")
+```
+
+
+
+```{r}
+storm <- convertHelper(storm, "CROPDMGEXP", "cropDamage")
+```
+
+
+
+```{r}
+names(storm)
+```
+
+
+
+```{r}
+options(scipen=999)
+property <- sortHelper("propertyDamage", dataset = storm)
+crop <- sortHelper("cropDamage", dataset = storm)
+```
+
+#Output Result
+
+As for the impact on public health, we have got two sorted lists of severe weather events below by the number of people badly affected.
+
+```{r}
+fatalities
+```
+
+
+
+```{r}
+injuries
+```
+
+The graphs of total fatalities and total injuries affected by these severe weather events.
+
+
+```{r}
+fatalitiesPlot <- qplot(EVTYPE, data = fatalities, weight = FATALITIES, geom = "bar", binwidth = 1) + 
+  scale_y_continuous("Number of Fatalities") + 
+  theme(axis.text.x = element_text(angle = 45, 
+                                   hjust = 1)) + xlab("Severe Weather Type") + 
+  ggtitle("Total Fatalities by Severe Weather\n Events in the U.S.\n from 1995 - 2011")
+injuriesPlot <- qplot(EVTYPE, data = injuries, weight = INJURIES, geom = "bar", binwidth = 1) + 
+  scale_y_continuous("Number of Injuries") + 
+  theme(axis.text.x = element_text(angle = 45, 
+                                   hjust = 1)) + xlab("Severe Weather Type") + 
+  ggtitle("Total Injuries by Severe Weather\n Events in the U.S.\n from 1995 - 2011")
+grid.arrange(fatalitiesPlot, injuriesPlot, ncol = 2)
+
+```
+
+
+From the histograms, it is found that excessive heat and tornado cause most fatalities; tornato that causes most injuries in the United States from 1995 to 2011.
+
+As for the economy impact, below are the sorted lists by the amount of money cost by damages.
+
+
+```{r}
+property
+```
+
+
+
+```{r}
+crop
+```
+
+Below are the graphs for total property damage and total crop damage affected by these severe weather events.
+
+
+```{r}
+propertyPlot <- qplot(EVTYPE, data = property, weight = propertyDamage, geom = "bar", binwidth = 1) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_y_continuous("Property Damage in US dollars")+ 
+  xlab("Severe Weather Type") + ggtitle("Total Property Damage by\n Severe Weather Events in\n the U.S. from 1995 - 2011")
+
+cropPlot<- qplot(EVTYPE, data = crop, weight = cropDamage, geom = "bar", binwidth = 1) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_y_continuous("Crop Damage in US dollars") + 
+  xlab("Severe Weather Type") + ggtitle("Total Crop Damage by \nSevere Weather Events in\n the U.S. from 1995 - 2011")
+grid.arrange(propertyPlot, cropPlot, ncol = 2)
+
+```
+
+From the histograms, it is found that the flood and hurricane/typhoon cause most property damage; drought and flood causes most crop damage in the United States from 1995 to 2011.
+
+##Conclusion
+
+It can be concluded that, the excessive heat and tornado are most harmful with respect to population health, while flood, drought, and hurricane/typhoon have the greatest impact on economy.
+
+
+
+
+
+
